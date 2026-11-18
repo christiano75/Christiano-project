@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>QA harness</title>
+<style>
+  body { font: 14px/1.4 monospace; margin: 0; padding: 16px; background: #111; color: #eee; }
+  iframe { border: 2px solid #555; display: block; margin-bottom: 24px; background: #fff; }
+  h2 { color: #9f9; margin: 12px 0 6px; }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="out">running…</div>
+<script>
+const widths = [390, 768, 1000, 1200, 1440];
+const pages = ['index.php', 'shop.php', 'product.php?id=5', 'cart.php', 'checkout.php', 'login.php', 'about.php', 'contact.php'];
+
+function waitLoad(win) {
+  return new Promise((resolve) => {
+    if (win.document.readyState === 'complete') return resolve();
+    win.addEventListener('load', resolve, { once: true });
+    setTimeout(resolve, 5000);
+  });
+}
+
+async function run() {
+  const results = [];
+  for (const page of pages) {
+    for (const w of widths) {
+      const frame = document.createElement('iframe');
+      frame.width = w;
+      frame.height = 900;
+      frame.src = page;
+      document.body.appendChild(frame);
+      await waitLoad(frame.contentWindow);
+      await new Promise((r) => setTimeout(r, 350));
+      try {
+        const doc = frame.contentDocument;
+        const vw = doc.documentElement.clientWidth;
+        const wide = [];
+        if (doc.documentElement.scrollWidth > vw + 1) {
+          for (const el of doc.querySelectorAll('body *')) {
+            const r = el.getBoundingClientRect();
+            if (r.width > 0 && r.right > vw + 1) {
+              wide.push(el.tagName.toLowerCase() + '.' + String(el.className.baseVal ?? el.className).trim().replace(/\s+/g, '.').slice(0, 50) + '@' + Math.round(r.right));
+            }
+          }
+        }
+        const imgs = [...doc.querySelectorAll('img')];
+        results.push({
+          page, w, clientWidth: vw, scrollWidth: doc.documentElement.scrollWidth,
+          bodyScrollWidth: doc.body.scrollWidth,
+          wide: wide.slice(0, 6),
+          images: imgs.length,
+          broken: imgs.filter((i) => i.complete && i.naturalWidth === 0).length,
+          navCollapsed: doc.querySelector('#mainNav') ? getComputedStyle(doc.querySelector('#mainNav')).display === 'none' : null,
+          cards: doc.querySelectorAll('.product-card').length,
+        });
+      } catch (err) {
+        results.push({ page, w, error: String(err) });
+      }
+      frame.remove();
+    }
+  }
+  document.getElementById('out').innerHTML = '<pre>' + JSON.stringify(results, null, 1) + '</pre>';
+  window.__qa = results;
+  document.title = 'QA done';
+}
+run();
+</script>
+</body>
+</html>
